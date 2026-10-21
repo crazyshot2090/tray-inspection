@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tray Inspection · Polarity</title>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<style>
+:root{box-sizing:border-box;--bg:#f4f5f7;--card:#fff;--tx:#14181f;--mu:#5b6573;--ac:#1668e3;--ok:#16a34a;--bad:#dc2626;--wa:#d99a00;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1319;--card:#1a2029;--tx:#eef1f5;--mu:#9aa5b4;--ac:#5b9dff}}
+:root[data-theme="dark"]{--bg:#0f1319;--card:#1a2029;--tx:#eef1f5;--mu:#9aa5b4;--ac:#5b9dff}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:12px}
+h1{font-size:18px;margin:0 0 8px}h2{font-size:16px;margin:0 0 8px}
+.card{background:var(--card);border-radius:12px;padding:12px;margin-bottom:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+button,label.btn{background:var(--ac);color:#fff;border:0;border-radius:10px;padding:12px 14px;font-size:15px;font-weight:600;flex:1;text-align:center;cursor:pointer}
+.sec{background:transparent!important;color:var(--ac)!important;border:1.5px solid var(--ac)!important}
+button:disabled{opacity:.4}
+input[type=text],select{width:100%;padding:11px;border-radius:8px;border:1px solid var(--mu);background:var(--bg);color:var(--tx);font-size:16px}
+input[type=number]{width:62px;padding:8px;border-radius:8px;border:1px solid var(--mu);background:var(--bg);color:var(--tx);font-size:16px}
+.steps{display:flex;gap:6px;margin-bottom:10px}
+.steps div{flex:1;text-align:center;font-size:12px;padding:6px 2px;border-radius:8px;background:var(--card);color:var(--mu)}
+.steps .on{background:var(--ac);color:#fff;font-weight:700}.steps .done{color:var(--ok);font-weight:700}
+canvas#cv,img#rimg{width:100%;height:auto;border-radius:10px;display:block;touch-action:manipulation}
+.pill{flex:1;border-radius:10px;padding:8px;text-align:center;font-weight:700;color:#fff}
+table{width:100%;border-collapse:collapse}td{padding:5px 0;border-bottom:1px solid rgba(128,128,128,.25);vertical-align:top}td:first-child{color:var(--mu);width:38%}
+small,.mu{color:var(--mu)}
+.hidden{display:none!important}
+#scan{position:fixed;inset:0;background:#000;z-index:50;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+#scan video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#box{position:relative;margin:auto;width:78%;max-width:420px;aspect-ratio:1.5;border-radius:14px;box-shadow:0 0 0 100vmax rgba(0,0,0,.6);z-index:2;overflow:hidden}
+#box i{position:absolute;width:34px;height:34px;border:4px solid #3dff8a}
+#box i:nth-child(1){left:0;top:0;border-right:0;border-bottom:0;border-radius:14px 0 0 0}
+#box i:nth-child(2){right:0;top:0;border-left:0;border-bottom:0;border-radius:0 14px 0 0}
+#box i:nth-child(3){left:0;bottom:0;border-right:0;border-top:0;border-radius:0 0 0 14px}
+#box i:nth-child(4){right:0;bottom:0;border-left:0;border-top:0;border-radius:0 0 14px 0}
+#laser{position:absolute;left:4%;right:4%;height:3px;background:#ff2b2b;box-shadow:0 0 14px 4px rgba(255,43,43,.8);animation:sw 1.6s ease-in-out infinite alternate}
+@keyframes sw{from{top:6%}to{top:94%}}
+#box.hit{animation:fl .4s}#box.hit #laser{background:#3dff8a;box-shadow:0 0 14px 4px #3dff8a;animation:none;top:50%}
+@keyframes fl{50%{background:rgba(61,255,138,.35)}}
+#stxt{position:relative;z-index:3;color:#fff;text-align:center;padding:12px;font-weight:600}
+#sbar{position:relative;z-index:3;display:flex;gap:8px;padding:12px}
+</style>
+</head>
+<body>
+<h1>Tray Inspection · Polarity</h1>
+<div class="steps" id="steps"><div>1 Part #</div><div>2 Inspect tray</div><div>3 Report</div></div>
+
+<div id="s1" class="card sec-s">
+  <h2>1 · Scan the Part Number barcode</h2><small>Tap “Photo of barcode” and take a close, sharp photo of the barcode or QR. It is read automatically and moves to the next step.</small>
+  <input type="text" id="pn" placeholder="Part number" autocomplete="off">
+  <div id="pnf" style="font-weight:600;margin-top:6px"></div>
+  <div class="row">
+    <button id="b1" class="sec">🎥 Live scan</button>
+    <label class="btn">📷 Photo of barcode<input type="file" accept="image/*" capture="environment" hidden id="p1"></label>
+  </div>
+  <div class="row"><button id="n1" disabled>Continue →</button></div>
+  <div id="hist" class="mu" style="margin-top:12px;font-size:13px"></div>
+</div>
+
+<div id="s2" class="card sec-s hidden">
+  <h2>2 · Scan the Tray code</h2><small>Now scan the barcode or QR on the tray the same way. After it reads, you go to the tray photo.</small>
+  <input type="text" id="tr_old" autocomplete="off">
+  <div id="trf" style="font-weight:600;margin-top:6px"></div>
+  <div class="row">
+    <button id="b2" class="sec">🎥 Live scan</button>
+    <label class="btn">📷 Photo of code<input type="file" accept="image/*" capture="environment" hidden id="p2"></label>
+  </div>
+  <div class="row"><select id="type_old"><option>Memory</option><option>IC</option><option>BGA</option><option>GPU</option><option>Other</option></select></div>
+  <div class="row"><button class="sec" id="v2">← Back</button><button id="n2" disabled>Continue →</button></div>
+</div>
+
+<div id="s3" class="sec-s hidden">
+  <div class="card">
+    <h2>2 · Tray photo &amp; inspection</h2><div class="row" style="margin-top:0"><input type="text" id="tr" placeholder="Tray number (optional)" autocomplete="off"></div><div class="row"><select id="type"><option>Memory</option><option>IC</option><option>BGA</option><option>GPU</option><option>Other</option></select></div>
+    <div class="row" style="margin-top:0">
+      <label class="btn">📷 Take photo<input id="f1" type="file" accept="image/*" capture="environment" hidden></label>
+      <label class="btn sec">🖼️ Gallery<input id="f2" type="file" accept="image/*" hidden></label>
+    </div>
+    <div class="row">Rows <input id="rows" type="number" value="6" min="1" max="40"> Columns <input id="cols" type="number" value="7" min="1" max="40"></div>
+    <div class="row">Sensitivity <input id="thr" type="range" min="0.1" max="0.8" step="0.05" value="0.35" style="flex:1"></div>
+  </div>
+  <div class="card">
+    <div id="msg" style="font-weight:600">Take or choose a photo of the tray.</div>
+    <small id="sub"></small>
+    <div style="margin:10px 0"><canvas id="cv" width="300" height="200"></canvas></div>
+    <div class="row" style="margin-top:0">
+      <div class="pill" style="background:var(--ok)">OK <span id="nok">0</span></div>
+      <div class="pill" style="background:var(--bad)">BAD <span id="nbad">0</span></div>
+      <div class="pill" style="background:var(--wa)">? <span id="nunk">0</span></div>
+    </div>
+    <div class="row"><button class="sec" id="rs">Reset points</button><button class="sec" id="v3">← Back</button></div>
+    <div class="row"><button id="mk" disabled>Generate report →</button></div>
+  </div>
+</div>
+
+<div id="s4" class="sec-s hidden">
+  <div class="card" id="rep"></div>
+  <div class="card">
+    <div class="row" style="margin-top:0"><button id="sh">Share report</button><button class="sec" id="cp">Copy text</button></div>
+    <small id="shm">If the share menu doesn’t open, take a screenshot of the report.</small>
+    <div class="row"><button class="sec" id="nt">New tray (same PN)</button><button class="sec" id="np">New PN</button></div>
+  </div>
+</div>
+
+<div id="scan" class="hidden">
+  <video id="vid" playsinline muted></video>
+  <div id="box"><i></i><i></i><i></i><i></i><div id="laser"></div></div>
+  <div id="stxt">Point at the barcode or QR code</div>
+  <div id="sbar"><button class="sec" id="sx" style="background:rgba(0,0,0,.5)!important;color:#fff!important;border-color:#fff!important">Close</button></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+let target=null,stream=null,run=false,bd=null,zr=null;
+let rep=null,rtext='';
+
+/* ---------- navegación ---------- */
+function go(n){
+  document.querySelectorAll('.sec-s').forEach(e=>e.classList.toggle('hidden',e.id!=='s'+n));
+  [...$('steps').children].forEach((e,i)=>{const k=n===1?1:n-1;e.className=i+1===k?'on':i+1<k?'done':''});
+  window.scrollTo(0,0);
+}
+go(1);
+function hist(){
+  try{
+    const h=JSON.parse(localStorage.getItem('tp_hist')||'[]');
+    $('hist').innerHTML=h.length?'<b>Recent reports (this phone)</b><br>'+h.slice(0,5).map(x=>x.t+' · '+x.pn+' · '+x.tr+' · '+x.r).join('<br>'):'';
+  }catch(e){}
+}
+hist();
+$('pn').oninput=()=>{$('n1').disabled=!$('pn').value.trim()};
+$('tr').oninput=()=>{$('n2').disabled=!$('tr').value.trim()};
+$('n1').onclick=()=>go(3);
+$('n2').onclick=()=>{go(3);if(!img)msg()};$('v3').onclick=()=>go(1);
+
+/* ---------- escáner ---------- */
+function beep(){
+  try{const a=new(window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator();o.frequency.value=1000;o.connect(a.destination);o.start();setTimeout(()=>{o.stop();a.close()},130)}catch(e){}
+  try{navigator.vibrate&&navigator.vibrate(90)}catch(e){}
+}
+function getZ(){
+  if(!zr&&window.ZXing){const h=new Map();h.set(ZXing.DecodeHintType.TRY_HARDER,true);zr=new ZXing.BrowserMultiFormatReader(h)}
+  return zr;
+}
+async function decodeCanvas(c){
+  if('BarcodeDetector' in window){
+    try{bd=bd||new BarcodeDetector();const r=await bd.detect(c);if(r.length)return{t:r[0].rawValue,f:r[0].format}}catch(e){}
+  }
+  const z=getZ();
+  if(z){try{const r=await z.decodeFromImageUrl(c.toDataURL('image/jpeg',.9));return{t:r.getText(),f:ZXing.BarcodeFormat[r.getBarcodeFormat()]}}catch(e){}}
+  return null;
+}
+function setCode(t,res){
+  const p=t==='pn';
+  $(p?'pn':'tr').value=res.t;$(p?'pnf':'trf').textContent='✔ Code read ('+String(res.f).replace(/_/g,' ')+'). Going to the next step…';setTimeout(()=>go(3),1200);
+  $(p?'n1':'n2').disabled=false;
+}
+async function startScan(t){
+  target=t;$('scan').classList.remove('hidden');$('box').classList.remove('hit');
+  $('stxt').textContent='Point at the barcode or QR code';
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280}}});
+    const v=$('vid');v.srcObject=stream;await v.play();run=true;loop();
+  }catch(e){
+    $('stxt').textContent='Could not open the camera here. Close this and use the Photo button, or open the link in your phone’s browser.';
+  }
+}
+async function loop(){
+  if(!run)return;
+  const v=$('vid');
+  if(v.videoWidth){
+    const k=Math.min(1,1024/v.videoWidth),c=document.createElement('canvas');
+    c.width=v.videoWidth*k;c.height=v.videoHeight*k;c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+    const r=await decodeCanvas(c);
+    if(r&&run){
+      run=false;beep();$('box').classList.add('hit');$('stxt').textContent='✔ '+r.t;
+      setCode(target,r);setTimeout(stopScan,700);return;
+    }
+  }
+  setTimeout(loop,250);
+}
+function stopScan(){
+  run=false;
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+  $('scan').classList.add('hidden');
+}
+$('sx').onclick=stopScan;
+$('b1').onclick=()=>startScan('pn');$('b2').onclick=()=>startScan('tray');
+function fileScan(inp,t){
+  inp.onchange=()=>{
+    const f=inp.files[0];if(!f)return;
+    const im=new Image();
+    im.onload=async()=>{
+      const k=Math.min(1,1600/Math.max(im.width,im.height)),c=document.createElement('canvas');
+      c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+      const r=await decodeCanvas(c);
+      if(r){beep();setCode(t,r)}else{$(t==='pn'?'pnf':'trf').textContent='✖ No code detected. Move closer, keep it sharp and try again, or type it in.'}
+    };
+    im.src=URL.createObjectURL(f);inp.value='';
+  };
+}
+fileScan($('p1'),'pn');fileScan($('p2'),'tray');
+
+/* ---------- inspección de polaridad ---------- */
+const cv=$('cv'),ctx=cv.getContext('2d');
+let img=null,gray=null,W=0,H=0,pts=[],cells=[],geo=null,step=0,scores=[],refIdx=-1,counts=null;
+const N=28,NAMES=['0°','90°','180°','270°'];
+function load(file){
+  if(!file)return;
+  const im=new Image();
+  im.onload=()=>{
+    const k=Math.min(1,1600/Math.max(im.width,im.height));
+    W=cv.width=Math.round(im.width*k);H=cv.height=Math.round(im.height*k);
+    ctx.drawImage(im,0,0,W,H);img=ctx.getImageData(0,0,W,H);
+    gray=new Float32Array(W*H);
+    for(let i=0;i<W*H;i++)gray[i]=.299*img.data[i*4]+.587*img.data[i*4+1]+.114*img.data[i*4+2];
+    restart();
+  };
+  im.src=URL.createObjectURL(file);
+}
+function restart(){pts=[];cells=[];scores=[];refIdx=-1;counts=null;step=1;$('mk').disabled=true;['nok','nbad','nunk'].forEach(i=>$(i).textContent=0);draw();msg()}
+function msg(){
+  const t=['Take or choose a photo of the tray.','Tap the center of the TOP-LEFT corner chip','Tap the TOP-RIGHT corner chip','Tap the BOTTOM-RIGHT corner chip','Tap the BOTTOM-LEFT corner chip','Now tap a correctly oriented chip (reference)','Done. Tap another chip to change the reference.'];
+  $('msg').textContent=t[step]||'';
+  $('sub').textContent=step>=1&&step<=4?'Point '+pts.length+' of 4':'';
+}
+function buildGrid(){
+  const R=+$('rows').value,C=+$('cols').value,[a,b,c,d]=pts;cells=[];
+  for(let r=0;r<R;r++)for(let q=0;q<C;q++){
+    const s=C>1?q/(C-1):0,t=R>1?r/(R-1):0;
+    const tx=a[0]+(b[0]-a[0])*s,ty=a[1]+(b[1]-a[1])*s,bx=d[0]+(c[0]-d[0])*s,by=d[1]+(c[1]-d[1])*s;
+    cells.push([tx+(bx-tx)*t,ty+(by-ty)*t,r,q]);
+  }
+  const dist=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1]);
+  const pitch=Math.min(C>1?dist(a,b)/(C-1):1e9,R>1?dist(a,d)/(R-1):1e9);
+  const un=(p,q)=>{const l=dist(p,q);return[(q[0]-p[0])/l,(q[1]-p[1])/l]};
+  geo={u:un(a,b),v:un(a,d),size:pitch*.8,pitch};
+}
+function patch(c){
+  const a=new Float32Array(N*N),{u,v,size}=geo;let m=0;
+  for(let i=0;i<N;i++)for(let j=0;j<N;j++){
+    const x=c[0]+(j/(N-1)-.5)*size*u[0]+(i/(N-1)-.5)*size*v[0],y=c[1]+(j/(N-1)-.5)*size*u[1]+(i/(N-1)-.5)*size*v[1];
+    const g=gray[Math.min(H-1,Math.max(0,Math.round(y)))*W+Math.min(W-1,Math.max(0,Math.round(x)))];a[i*N+j]=g;m+=g;
+  }
+  m/=a.length;let s=0;for(let i=0;i<a.length;i++){a[i]-=m;s+=a[i]*a[i]}
+  s=Math.sqrt(s/a.length)||1;for(let i=0;i<a.length;i++)a[i]/=s;return a;
+}
+const rot=a=>{const o=new Float32Array(N*N);for(let i=0;i<N;i++)for(let j=0;j<N;j++)o[i*N+j]=a[(N-1-j)*N+i];return o};
+const dot=(a,b)=>{let s=0;for(let i=0;i<a.length;i++)s+=a[i]*b[i];return s/a.length};
+function analyze(){
+  const rots=[patch(cells[refIdx])];for(let k=1;k<4;k++)rots.push(rot(rots[k-1]));
+  scores=cells.map(c=>{const p=patch(c);return rots.map(r=>dot(p,r))});show();
+}
+function status(i){
+  const sc=scores[i];let b=0;for(let k=1;k<4;k++)if(sc[k]>sc[b])b=k;
+  return sc[b]<+$('thr').value?{s:'unk',k:b}:{s:b===0?'ok':'bad',k:b};
+}
+function draw(){
+  if(!img)return;ctx.putImageData(img,0,0);
+  ctx.fillStyle='#1668e3';pts.forEach(p=>{ctx.beginPath();ctx.arc(p[0],p[1],W/90,0,7);ctx.fill()});
+}
+function show(){
+  draw();let ok=0,bad=0,unk=0;const bads=[],unks=[],lw=Math.max(3,W/250);
+  cells.forEach((c,i)=>{
+    const st=status(i),h=geo.size/2,col=st.s==='ok'?'#16a34a':st.s==='bad'?'#dc2626':'#e0a200';
+    ctx.save();ctx.translate(c[0],c[1]);ctx.rotate(Math.atan2(geo.u[1],geo.u[0]));ctx.lineWidth=lw;ctx.strokeStyle=col;
+    if(st.s==='bad'){ctx.fillStyle='rgba(220,38,38,.28)';ctx.fillRect(-h,-h,h*2,h*2)}
+    ctx.strokeRect(-h,-h,h*2,h*2);ctx.restore();
+    if(i===refIdx){ctx.fillStyle='#1668e3';ctx.beginPath();ctx.arc(c[0],c[1],lw*1.6,0,7);ctx.fill()}
+    if(st.s!=='ok'){
+      ctx.fillStyle=col;ctx.font='bold '+Math.round(geo.size*.45)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.strokeStyle='#000';ctx.lineWidth=3;const tx=st.s==='bad'?'✕':'?';ctx.strokeText(tx,c[0],c[1]);ctx.fillText(tx,c[0],c[1]);
+    }
+    if(st.s==='ok')ok++;
+    else if(st.s==='bad'){bad++;bads.push('R'+(c[2]+1)+'-C'+(c[3]+1)+' ('+NAMES[st.k]+')')}
+    else{unk++;unks.push('R'+(c[2]+1)+'-C'+(c[3]+1))}
+  });
+  $('nok').textContent=ok;$('nbad').textContent=bad;$('nunk').textContent=unk;
+  counts={ok,bad,unk,bads,unks,total:cells.length};$('mk').disabled=false;
+}
+cv.addEventListener('click',e=>{
+  if(!img||step<1)return;
+  const r=cv.getBoundingClientRect(),p=[(e.clientX-r.left)*W/r.width,(e.clientY-r.top)*H/r.height];
+  if(step<=4){
+    pts.push(p);
+    if(pts.length===4){buildGrid();step=5;draw();ctx.strokeStyle='#1668e3';ctx.lineWidth=2;cells.forEach(c=>ctx.strokeRect(c[0]-geo.size/2,c[1]-geo.size/2,geo.size,geo.size))}
+    else{step++;draw()}
+    msg();
+  }else{
+    let bi=-1,bd2=geo.pitch*.6;
+    cells.forEach((c,i)=>{const d=Math.hypot(c[0]-p[0],c[1]-p[1]);if(d<bd2){bd2=d;bi=i}});
+    if(bi<0)return;refIdx=bi;step=6;msg();analyze();
+  }
+});
+$('thr').oninput=()=>{if(scores.length)show()};
+['rows','cols'].forEach(id=>$(id).onchange=()=>{if(img)restart()});
+$('rs').onclick=()=>{if(img)restart()};
+$('f1').onchange=e=>{load(e.target.files[0]);e.target.value=''};
+$('f2').onchange=e=>{load(e.target.files[0]);e.target.value=''};
+
+/* ---------- reporte ---------- */
+function mk(){
+  if(!counts)return;
+  const d=new Date(),t=d.toLocaleString('en-US',{dateStyle:'short',timeStyle:'short'});
+  const res=counts.bad>0?'REJECTED · polarity':counts.unk>0?'REVIEW · unconfirmed positions':'PASSED';
+  rep={pn:$('pn').value.trim(),tr:$('tr').value.trim()||'—',type:$('type').value,t,res,img:cv.toDataURL('image/jpeg',.75),...counts,rows:$('rows').value,cols:$('cols').value};
+  const col=counts.bad>0?'var(--bad)':counts.unk>0?'var(--wa)':'var(--ok)';
+  $('rep').innerHTML='<h2>3 · Inspection report</h2><div class="pill" style="background:'+col+';margin-bottom:10px">'+res+'</div><table>'
+   +'<tr><td>Part number</td><td><b>'+esc(rep.pn)+'</b></td></tr><tr><td>Tray</td><td><b>'+esc(rep.tr)+'</b></td></tr>'
+   +'<tr><td>Type</td><td>'+rep.type+' · '+rep.rows+'×'+rep.cols+'</td></tr><tr><td>Date</td><td>'+t+'</td></tr>'
+   +'<tr><td>Positions</td><td>'+counts.total+' (OK '+counts.ok+' · BAD '+counts.bad+' · ? '+counts.unk+')</td></tr>'
+   +'<tr><td>Misoriented</td><td>'+(counts.bads.join(', ')||'None')+'</td></tr>'
+   +'<tr><td>Unconfirmed</td><td>'+(counts.unks.join(', ')||'None')+'</td></tr></table>'
+   +'<img id="rimg" src="'+rep.img+'" alt="Inspected tray" style="margin-top:10px">';
+  rtext='INSPECTION REPORT\nPN: '+rep.pn+'\nTray: '+rep.tr+'\nType: '+rep.type+' ('+rep.rows+'x'+rep.cols+')\nDate: '+t+'\nResult: '+res+'\nOK '+counts.ok+' / BAD '+counts.bad+' / ? '+counts.unk+'\nMisoriented: '+(counts.bads.join(', ')||'none')+'\nUnconfirmed: '+(counts.unks.join(', ')||'none');
+  try{const h=JSON.parse(localStorage.getItem('tp_hist')||'[]');h.unshift({t,pn:rep.pn,tr:rep.tr,r:counts.bad>0?'BAD':counts.unk>0?'REVIEW':'OK'});localStorage.setItem('tp_hist',JSON.stringify(h.slice(0,30)))}catch(e){}
+  go(4);
+}
+function esc(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+$('mk').onclick=mk;
+$('sh').onclick=async()=>{
+  try{
+    const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',.8));
+    const f=new File([blob],'tray-'+rep.tr+'.jpg',{type:'image/jpeg'});
+    if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({title:'Report '+rep.pn,text:rtext,files:[f]});return}
+    await navigator.share({title:'Report '+rep.pn,text:rtext});
+  }catch(e){$('shm').textContent='Could not open share. Use Copy text or take a screenshot.'}
+};
+$('cp').onclick=async()=>{try{await navigator.clipboard.writeText(rtext);$('shm').textContent='Text copied ✔'}catch(e){$('shm').textContent='Could not copy. Take a screenshot of the report.'}};
+function resetScan(){img=null;gray=null;pts=[];cells=[];scores=[];counts=null;step=0;cv.width=300;cv.height=200;ctx.clearRect(0,0,300,200);$('mk').disabled=true;['nok','nbad','nunk'].forEach(i=>$(i).textContent=0)}
+$('nt').onclick=()=>{$('tr').value='';$('trf').textContent='';$('n2').disabled=true;resetScan();go(3)};
+$('np').onclick=()=>{['pn','tr'].forEach(i=>$(i).value='');['pnf','trf'].forEach(i=>$(i).textContent='');$('n1').disabled=$('n2').disabled=true;resetScan();hist();go(1)};
+</script>
+</body>
+</html>
